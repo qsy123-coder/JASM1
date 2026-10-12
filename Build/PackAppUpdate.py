@@ -74,7 +74,7 @@ from pathlib import Path
 
 # 默认与 appsettings.json 的 AppUpdate:ManifestUrl 同桶同前缀。改桶时三处一起改：这边、
 # appsettings.json、以及 JASM.AutoUpdater/MainPageVM.cs（随包分发的独立进程，同一地址写死在代码里）。
-DEFAULT_BASE_URL = "https://REPLACE-ME-NEW-COS.cos.ap-guangzhou.myqcloud.com/app/"
+DEFAULT_BASE_URL = "https://jasm-modenv-1327973389.cos.ap-guangzhou.myqcloud.com/app1/"
 
 DEFAULT_OUT = "Build/out/app"
 DEFAULT_MANIFEST = "Build/out/app/update.json"
