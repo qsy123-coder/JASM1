@@ -415,7 +415,7 @@ public partial class MainPageVM : ObservableRecipient
     /// 指向同一个对象 —— 本 exe 是随包分发的独立进程，拿不到主程序的配置，只能写死。
     /// </summary>
     private const string ManifestUrl =
-        "https://REPLACE-ME-NEW-COS.cos.ap-guangzhou.myqcloud.com/app/update.json";
+        "https://jasm-modenv-1327973389.cos.ap-guangzhou.myqcloud.com/app1/update.json";
 
     /// <summary>GitHub 回退通道。清单拉不到时用它 —— 这也是 COS 出事时把资产重新挂回 release 就能救回来的那条路。</summary>
     private const string ReleasesApiUrl =
