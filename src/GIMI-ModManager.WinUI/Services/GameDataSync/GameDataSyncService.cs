@@ -25,7 +25,7 @@ public class GameDataSyncService
     private readonly ILocalSettingsService _localSettingsService;
     private readonly NotificationManager _notificationManager;
 
-    private const string GitHubReleasesUrl = "https://api.github.com/repos/qsy123-coder/JASM/releases";
+    private const string GitHubReleasesUrl = "https://api.github.com/repos/REPLACE-ME-OWNER/REPLACE-ME-REPO/releases";
     private const string DataVersionFileName = ".dataversion";
 
     public GameDataSyncService(
