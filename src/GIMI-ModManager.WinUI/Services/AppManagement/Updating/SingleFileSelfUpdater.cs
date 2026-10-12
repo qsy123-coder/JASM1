@@ -121,7 +121,7 @@ exit 0
             if (asset?.Url is null)
                 return SingleFileSelfUpdateResult.Fail(
                     $"未找到可用的单文件更新包（{SingleFileAssetPrefix}*.zip）。请到 " +
-                    $"{_appUpdateManifestService.GetNotesUrl(release) ?? "https://github.com/qsy123-coder/JASM/releases"} 手动下载。");
+                    $"{_appUpdateManifestService.GetNotesUrl(release) ?? "https://github.com/REPLACE-ME-OWNER/REPLACE-ME-REPO/releases"} 手动下载。");
 
             // 1. 下载到临时目录（断点续传 + 活动超时 + 可选 SHA256 校验）
             var workDir = Path.Combine(Path.GetTempPath(), "JASM_SingleFile_Update");
