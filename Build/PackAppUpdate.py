@@ -17,7 +17,7 @@ JASM 的应用更新原先完全靠 GitHub Releases：包挂在那里，客户�
           "version": "2.31.0",                 # 纯数字点分，不带 v 前缀（客户端用 Version.TryParse 解析）
           "prerelease": false,                 # true 时普通用户不会被提示更新
           "publishedAt": "2026-09-30T08:00:00Z",
-          "notesUrl": "https://github.com/qsy123-coder/JASM/releases/tag/v2.31.0",
+          "notesUrl": "https://github.com/REPLACE-ME-OWNER/REPLACE-ME-REPO/releases/tag/v2.31.0",
           "assets": [
             { "name": "JASM_v2.31.0.7z", "kind": "folder",
               "url": "https://<桶域名>/app/JASM_v2.31.0.7z",
@@ -72,8 +72,9 @@ import zipfile
 from datetime import datetime, timezone
 from pathlib import Path
 
-# 默认与 appsettings.json 的 AppUpdate:ManifestUrl 同桶同前缀，改桶时两处一起改。
-DEFAULT_BASE_URL = "https://jasm-modenv-1327973389.cos.ap-guangzhou.myqcloud.com/app/"
+# 默认与 appsettings.json 的 AppUpdate:ManifestUrl 同桶同前缀。改桶时三处一起改：这边、
+# appsettings.json、以及 JASM.AutoUpdater/MainPageVM.cs（随包分发的独立进程，同一地址写死在代码里）。
+DEFAULT_BASE_URL = "https://REPLACE-ME-NEW-COS.cos.ap-guangzhou.myqcloud.com/app/"
 
 DEFAULT_OUT = "Build/out/app"
 DEFAULT_MANIFEST = "Build/out/app/update.json"
@@ -96,7 +97,7 @@ SCHEMA_VERSION = 1
 # 清单里保留多少个历史版本，默认与 ModEnv 的 KeepBackupCount 对齐。
 DEFAULT_KEEP = 5
 
-DEFAULT_RELEASES_PAGE = "https://github.com/qsy123-coder/JASM/releases"
+DEFAULT_RELEASES_PAGE = "https://github.com/REPLACE-ME-OWNER/REPLACE-ME-REPO/releases"
 
 # 版本号必须是纯数字点分（2.31 / 2.31.0 / 2.31.0.1）。带 v 前缀或后缀的写法客户端解析不出来，
 # 只会被静默跳过 —— 表现为「明明发了新版，用户端却不提示」，很难回查，所以这里直接拦掉。
@@ -344,11 +345,11 @@ def main() -> int:
         print(f"      - {asset['name']}")
     print(f"    传完用浏览器打开 {base_url}{MANIFEST_NAME} 确认返回的是 JSON、而不是被 COS 包了一层的 XML。")
     print()
-    print(" 2) ⚠️ GitHub release 上仍要挂同一版本的同名资产 —— ≤2.30.0 的老客户端和用户机上那份旧的")
-    print("    JASM - Auto Updater.exe 只会读 GitHub Releases API；COS 清单拉不到时（欠费/权限/被刷）")
-    print("    也是靠它回退。清单拉不到时把两个包重新挂回 release 即可让所有已发布客户端自动走回退。")
+    print(" 2) ⚠️ GitHub release 上仍要挂同一版本的同名资产 —— COS 清单拉不到时（欠费/权限/被刷）")
+    print("    客户端靠 GitHub Releases API 回退。把两个包重新挂回 release 即可让本线所有已发布的")
+    print("    客户端自动走回退，不需要发新版。")
     release_args = " ".join(asset["name"] for asset in assets)
-    print(f"      gh release upload v{version} {release_args} --repo qsy123-coder/JASM --clobber")
+    print(f"      gh release upload v{version} {release_args} --repo REPLACE-ME-OWNER/REPLACE-ME-REPO --clobber")
     print()
     print(" 3) 清单是「先下载线上那份、再本地增量合并」的用法：加下一个版本前，先把 COS 上的")
     print(f"    {MANIFEST_NAME} 存到 --manifest 指向的位置，否则本地这份会丢掉更早的版本记录。")
