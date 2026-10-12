@@ -33,7 +33,7 @@ public partial class MainPageVM : ObservableRecipient
     [ObservableProperty] private string _latestVersion = "-----";
 
     /// <summary>仓库的 releases 页，作为清单没给 notesUrl 时的兜底"看看更新了什么"地址。</summary>
-    private const string DefaultReleasesPageUrl = "https://github.com/REPLACE-ME-OWNER/REPLACE-ME-REPO/releases";
+    private const string DefaultReleasesPageUrl = "https://github.com/qsy123-coder/JASM1/releases";
 
     [ObservableProperty] private Uri _defaultBrowserUri = new(DefaultReleasesPageUrl);
 
@@ -419,7 +419,7 @@ public partial class MainPageVM : ObservableRecipient
 
     /// <summary>GitHub 回退通道。清单拉不到时用它 —— 这也是 COS 出事时把资产重新挂回 release 就能救回来的那条路。</summary>
     private const string ReleasesApiUrl =
-        "https://api.github.com/repos/REPLACE-ME-OWNER/REPLACE-ME-REPO/releases?per_page=2";
+        "https://api.github.com/repos/qsy123-coder/JASM1/releases?per_page=2";
 
     /// <summary>
     /// 「当前该更新到哪个版本、包在哪」—— 与主程序共用 Core 里的同一份解析器（COS 清单优先，GitHub 回退），
