@@ -23,6 +23,12 @@ public sealed partial class ModMarketPage : Page
         ViewModel = App.GetService<ModMarketViewModel>();
         InitializeComponent();
         Loaded += OnLoaded;
+
+        // 首次进入市场页时 ScrollViewer 还没被量过，ViewportHeight 为 0 —— 那样
+        // OnModsCollectionChanged 里那两次 LazyLoadVisibleImages() 都会提前返回，而之后
+        // 又没有第三个触发点，首屏那批卡片的图就永远没人认领（重进页面才好）。
+        // 等它拿到真实尺寸时补一次。
+        CardScrollViewer.SizeChanged += (_, _) => LazyLoadVisibleImages();
         ViewModel.Mods.CollectionChanged += OnModsCollectionChanged;
         ViewModel.PropertyChanged += (s, e) =>
         {
@@ -110,6 +116,10 @@ public sealed partial class ModMarketPage : Page
         // 整卡按槽位宽等比缩放,比例才在任何窗口宽度下都与商店一致。
         if (CardScaler.Collect(card) is { } scaler)
             card.SizeChanged += (_, e) => scaler.Apply(e.NewSize.Width);
+
+        // 卡片进可视树的那一刻再补一次：AddCard 时它还不在树里，TransformToVisual 会抛，
+        // 那次认领只能 continue 掉。
+        card.Loaded += (_, _) => LazyLoadVisibleImages();
 
         // 懒加载:无预览图直接隐藏加载圈;有图的挂到待加载队列,滚动到视口才设 Source
         var thumb = FindByName<Image>(card, "CardImage");
