@@ -18,6 +18,12 @@ public sealed partial class ModMarketPage : Page
     // 离屏卡片的进度圈默认折叠、不空转。
     private readonly List<PendingCard> _pendingImages = [];
 
+    /// <summary>已设过 Source、但还没等到 ImageOpened/ImageFailed 的图 —— 失败时靠它找回对应的卡片。</summary>
+    private readonly Dictionary<Image, PendingCard> _claimedImages = [];
+
+    /// <summary>失败重试用的单次计时器，见 <see cref="EnsureRetryTimer"/>。</summary>
+    private DispatcherQueueTimer? _retryTimer;
+
     public ModMarketPage()
     {
         ViewModel = App.GetService<ModMarketViewModel>();
@@ -71,6 +77,9 @@ public sealed partial class ModMarketPage : Page
                 case NotifyCollectionChangedAction.Reset:
                 case NotifyCollectionChangedAction.Remove:
                     _pendingImages.Clear();
+                    // 旧卡片已被丢弃，别再替它们记着「认领待确认」—— 否则迟到的失败回调会把
+                    // 已经不在树上的卡塞回待认领队列（那样每次认领都会在 TransformToVisual 上抛）。
+                    _claimedImages.Clear();
                     ModCardsPanel.Children.Clear();
                     if (e.Action == NotifyCollectionChangedAction.Reset) break;
                     foreach (var mod in ViewModel.Mods) AddCard((ModMarketMod)mod);
@@ -141,7 +150,7 @@ public sealed partial class ModMarketPage : Page
                 Backdrop = FindByName<Image>(card, "CardImageBackdrop"),
                 // 按名字在**逻辑树**里找(此刻卡片还没进可视树,VisualTreeHelper 认不到)
                 Ring = FindByName<ProgressRing>(card, "CardLoadingRing"),
-                Url = mod.PreviewImageUrl
+                Url = mod.PreviewImageUrl! // 上面已判过非空
             });
         }
         ModCardsPanel.Children.Add(card);
@@ -380,6 +389,8 @@ public sealed partial class ModMarketPage : Page
         for (var i = _pendingImages.Count - 1; i >= 0; i--)
         {
             var e = _pendingImages[i];
+            // 上一次失败之后还在退避窗口里，这一轮先放过它
+            if (e.NextRetryAt > DateTimeOffset.Now) continue;
             double y;
             try
             {
@@ -395,7 +406,19 @@ public sealed partial class ModMarketPage : Page
                 e.Ring.Visibility = Visibility.Visible;
                 e.Ring.IsActive = true;
             }
-            e.Thumb.Source = new Microsoft.UI.Xaml.Media.Imaging.BitmapImage(new Uri(e.Url));
+            if (e.Thumb is { } thumb)
+            {
+                e.Attempts++;
+                // 第 2 次起绕开 XAML 那个按 URI 的图像缓存:失败过一次的 URI 可能已在缓存里留了痕,
+                // 不绕的话重试会直接吃到上次那份失败结果。
+                thumb.Source = new Microsoft.UI.Xaml.Media.Imaging.BitmapImage(new Uri(e.Url))
+                {
+                    CreateOptions = e.Attempts > 1
+                        ? Microsoft.UI.Xaml.Media.Imaging.BitmapCreateOptions.IgnoreImageCache
+                        : Microsoft.UI.Xaml.Media.Imaging.BitmapCreateOptions.None
+                };
+                _claimedImages[thumb] = e;
+            }
 
             // 模糊背景:同一张图、极低分辨率(拉到卡片宽就是一片柔和色块),填住主图两边的窄边
             if (e.Backdrop is not null)
@@ -408,17 +431,45 @@ public sealed partial class ModMarketPage : Page
         }
     }
 
+    /// <summary>
+    /// 失败重试的退避起点。懒加载只认领一次，没有重试的话一次网络抖动就是一张永久空卡；
+    /// 也**不设「试几次就放弃」**——放弃等于又回到「一次网络抖动就是一张永久空卡」。
+    /// 退避本身已经把死链的代价压到「只要还留在视口里就每分钟一次请求」，可以一直等网络恢复。
+    /// </summary>
+    private static readonly TimeSpan RetryBackoffBase = TimeSpan.FromSeconds(3);
+
+    /// <summary>退避上限：翻倍到这儿就停住，死链每分钟最多试一次。</summary>
+    private static readonly TimeSpan RetryBackoffCap = TimeSpan.FromSeconds(60);
+
+    /// <summary>重试计时器的轮询间隔 —— 够密，才不会被某张卡的退避窗口整段错过去。</summary>
+    private static readonly TimeSpan RetryPollInterval = TimeSpan.FromSeconds(2);
+
+    /// <summary>第 <paramref name="attempts"/> 次失败之后的等待时长：起点 3s、每失败一次翻倍、封顶 60s。</summary>
+    private static TimeSpan BackoffFor(int attempts)
+    {
+        var seconds = RetryBackoffBase.TotalSeconds * Math.Pow(2, attempts - 1);
+        return TimeSpan.FromSeconds(Math.Min(seconds, RetryBackoffCap.TotalSeconds));
+    }
+
     /// <summary>待懒加载的卡片状态。</summary>
     private sealed class PendingCard
     {
         public FrameworkElement Card = null!;
         public Image? Thumb;
 
+        /// <summary>已经设过几次 Source（含首次）。用来算下一次重试要退避多久。</summary>
+        public int Attempts;
+
+        /// <summary>下一次允许重试的时刻（退避窗口的右端）。默认值 = 随时可以认领。</summary>
+        public DateTimeOffset NextRetryAt;
+
+        /// <summary>非空 —— 队列里只会放「有预览图」的卡片（见 <see cref="AddCard"/>）。</summary>
+        public string Url = null!;
+
         /// <summary>主图后面那层模糊背景(同一张图、极低分辨率),用来填住 Uniform 留下的窄边。</summary>
         public Image? Backdrop;
 
         public ProgressRing? Ring;
-        public string? Url;
     }
 
     /// <summary>
@@ -430,16 +481,70 @@ public sealed partial class ModMarketPage : Page
     /// </summary>
     private const int BackdropDecodeWidth = 16;
 
-    /// <summary>图片加载成功：隐藏卡片加载圈</summary>
+    /// <summary>图片加载成功：隐藏卡片加载圈，并把它从「认领待确认」里摘掉（成功了就不会再重试）</summary>
     private void CardImage_Opened(object sender, RoutedEventArgs e)
     {
-        if (sender is Image { Parent: Grid grid }) HideCardLoadingRing(grid);
+        if (sender is not Image image) return;
+        _claimedImages.Remove(image);
+        if (image.Parent is Grid grid) HideCardLoadingRing(grid);
     }
 
-    /// <summary>图片加载失败：隐藏卡片加载圈（占位灰底仍然可见）</summary>
+    /// <summary>图片加载失败：隐藏卡片加载圈（占位底色仍然可见），并排队重试</summary>
     private void CardImage_Failed(object sender, ExceptionRoutedEventArgs e)
     {
-        if (sender is Image { Parent: Grid grid }) HideCardLoadingRing(grid);
+        if (sender is not Image image) return;
+        if (image.Parent is Grid grid) HideCardLoadingRing(grid);
+        QueueImageRetry(image);
+    }
+
+    /// <summary>
+    /// 这次没加载成功，把卡片放回待认领队列。
+    ///
+    /// <para>
+    /// 懒加载只认领一次、认领即出队 —— 若那一次恰好失败（刚开机、代理还在握手、网络正好抖一下），
+    /// 这张卡就再没人管，永久停在背景色上，非整页重建不可。实机现象「首屏十几张一直空着，
+    /// 之后滚出来的都正常」就是这个：它们是在网络还没就绪时被认领的，而队列里已经没有它们了。
+    /// </para>
+    /// </summary>
+    private void QueueImageRetry(Image image)
+    {
+        // 不在这张表里 = 不是我们认领的（或已经成功过），不该管
+        if (!_claimedImages.Remove(image, out var pending)) return;
+
+        // 失败一次就往后推一档：3s、6s、12s……封顶 60s。不设「试几次就放弃」，
+        // 网络恢复后不管隔了多久，只要卡片还在视口里就一定能自己好。
+        pending.NextRetryAt = DateTimeOffset.Now + BackoffFor(pending.Attempts);
+        _pendingImages.Add(pending);
+        EnsureRetryTimer();
+    }
+
+    /// <summary>
+    /// 保证重试计时器在跑。用计时器而不是只靠滚动，是为了让首屏在用户不动手的情况下也能自愈；
+    /// 跑的还是 <see cref="LazyLoadVisibleImages"/>，所以只有仍落在视口内、且退避窗口已过的卡会被重试。
+    ///
+    /// <para>它是**重复**计时器（而不是每次失败重排一个单次计时器）：各张卡的退避时长不同，
+    /// 单次计时器会被后一次的失败覆盖掉，先到期的那些就永远等不到自己的那一拍。
+    /// 队列里没有卡还在等退避时就停掉，不空转。</para>
+    /// </summary>
+    private void EnsureRetryTimer()
+    {
+        if (_retryTimer is null)
+        {
+            _retryTimer = DispatcherQueue.CreateTimer();
+            _retryTimer.Interval = RetryPollInterval;
+            _retryTimer.IsRepeating = true;
+            _retryTimer.Tick += (_, _) =>
+            {
+                LazyLoadVisibleImages();
+
+                // 没有卡还在退避窗口里等着，就停：剩下的要么是没进过视口的新卡（滚动会认领），
+                // 要么已经认领出去了。
+                if (!_pendingImages.Any(pending => pending.NextRetryAt != default))
+                    _retryTimer.Stop();
+            };
+        }
+
+        _retryTimer.Start();
     }
 
     private static void HideCardLoadingRing(DependencyObject root)
