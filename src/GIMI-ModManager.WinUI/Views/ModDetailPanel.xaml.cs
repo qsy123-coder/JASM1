@@ -1,6 +1,7 @@
 using System.Text.Json;
 using GIMI_ModManager.WinUI.Models;
 using GIMI_ModManager.WinUI.Services;
+using GIMI_ModManager.WinUI.Services.Netdisk;
 using GIMI_ModManager.WinUI.Services.Notifications;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
@@ -283,13 +284,16 @@ public sealed partial class ModDetailPanel : UserControl
 
         // 平台专属说明文字框(默认收起,复制成功后才展开)
         var (tipText, tipImage) = GetDriveInfo(name);
-        var tip = BuildDriveTip(tipText, tipImage);
+        var (tip, tipTextBlock) = BuildDriveTip(tipText, tipImage);
 
-        // 点击 = 复制链接(而非跳转浏览器) → 成功后展开下方说明文字框
+        // 点击 = 复制链接(而非跳转浏览器) → 顺手把对应客户端拉起来(已在跑就只复制) → 展开说明文字框
         btn.Click += (s, e) =>
         {
-            if (CopyNetdiskLink(url, name))
-                tip.Visibility = Visibility.Visible;
+            if (!CopyNetdiskLink(url, name)) return;
+
+            var outcome = App.GetService<NetdiskClientLauncher>().Launch(name, url);
+            tipTextBlock.Text = GetDriveTipText(name, outcome);
+            tip.Visibility = Visibility.Visible;
         };
 
         var container = new StackPanel { Spacing = 6 };
@@ -303,7 +307,7 @@ public sealed partial class ModDetailPanel : UserControl
     {
         return new TextBlock
         {
-            Text = "提示：点击下方网盘卡片即可复制链接，请打开对应的网盘客户端转存并下载（网页端通常限速且需登录，推荐用客户端）。",
+            Text = "提示：点击下方网盘卡片会复制链接，并自动打开对应的网盘客户端（客户端已在运行则不重复打开，未安装则只复制）；网页端通常限速且需登录，推荐用客户端。",
             FontSize = 11,
             Foreground = (Brush)Application.Current.Resources["TextFillColorTertiaryBrush"],
             TextWrapping = TextWrapping.Wrap
@@ -340,12 +344,42 @@ public sealed partial class ModDetailPanel : UserControl
             return ("请打开夸克网盘客户端会自动弹出下载框；网页端打开则可能限速、需要反复登录。", "QuarkDownloadHelp.png");
         if (p.Contains("迅雷") || p.Contains("thunder") || p.Contains("xunlei"))
             return ("打开迅雷客户端，在上方搜索框粘贴链接转存下载；网页端打开则可能限速、需要反复登录。", "ThunderDownloadHelp.png");
+        // 百度网盘暂无对应的帮助截图（Assets 里只有夸克/迅雷那两张），所以图传 null
+        if (p.Contains("百度") || p.Contains("baidu"))
+            return ("请打开百度网盘客户端并粘贴链接转存下载；网页端通常限速且需登录。", null);
 
         return ("已复制链接，请在对应的下载客户端中打开；网页端打开可能限速或需反复登录。", null);
     }
 
-    /// <summary>平台专属说明文字框：左侧说明文本，右侧「?」图标悬停时在下方展开对应截图（占满宽度，带展开/收起动画）。默认收起。</summary>
-    private Border BuildDriveTip(string text, string? imageFile)
+    /// <summary>
+    /// 复制成功、且判断过客户端启动结果之后要显示的文案。
+    /// 只有「确实拉起来了」与「本来就在跑」两种结果值得单说，其余情况沿用 <see cref="GetDriveInfo"/> 的兜底文案。
+    /// </summary>
+    private static string GetDriveTipText(string platform, NetdiskLaunchOutcome outcome)
+    {
+        if (outcome == NetdiskLaunchOutcome.AlreadyRunning)
+            return "已复制链接。检测到客户端已在运行，直接粘贴链接即可。";
+
+        if (outcome != NetdiskLaunchOutcome.Opened)
+            return GetDriveInfo(platform).Text;
+
+        var p = platform.Trim().ToLowerInvariant();
+        if (p.Contains("夸克") || p.Contains("quark"))
+            return "已复制链接并打开夸克网盘客户端，会自动弹出下载框；网页端可能限速、需反复登录。";
+        if (p.Contains("迅雷") || p.Contains("thunder") || p.Contains("xunlei"))
+            return "已复制链接并打开迅雷客户端，在上方搜索框粘贴链接转存下载；网页端可能限速。";
+        if (p.Contains("百度") || p.Contains("baidu"))
+            return "已复制链接并打开百度网盘客户端，粘贴链接即可转存下载。";
+
+        // 平台名认不出、但启动器靠链接 host 认出来了 —— 说通用的话
+        return "已复制链接，并已打开对应的下载客户端。";
+    }
+
+    /// <summary>
+    /// 平台专属说明文字框：左侧说明文本，右侧「?」图标悬停时在下方展开对应截图（占满宽度，带展开/收起动画）。默认收起。
+    /// 一并把文本块交出去 —— 复制完链接、得知客户端启动结果后要改写这段文案。
+    /// </summary>
+    private (Border Tip, TextBlock Text) BuildDriveTip(string text, string? imageFile)
     {
         var tip = new Border
         {
@@ -416,7 +450,7 @@ public sealed partial class ModDetailPanel : UserControl
         }
 
         tip.Child = inner;
-        return tip;
+        return (tip, textBlock);
     }
 
     /// <summary>展开/收起提示截图：联动 MaxHeight（高度）与 Opacity（透明度），带缓动动画。</summary>
