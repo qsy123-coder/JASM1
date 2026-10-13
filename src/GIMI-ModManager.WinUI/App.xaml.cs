@@ -430,6 +430,9 @@ public partial class App : Application
                 services.AddTransient<ModMarketPage>();
                 services.AddSingleton<ModMarketService>();
 
+                // 网盘客户端：点市场详情里的网盘卡片时，复制链接之余把对应客户端拉起来（已在跑则只复制）
+                services.AddSingleton<Services.Netdisk.NetdiskClientLauncher>();
+
                 // Mod Store（GameBanana 直连，与上面的市场数据完全独立）
                 services.AddTransient<ModStoreViewModel>();
                 services.AddTransient<ModStorePage>();
