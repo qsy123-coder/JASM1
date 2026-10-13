@@ -1,5 +1,28 @@
 # Changelog
 
+## [1.1.0](https://github.com/qsy123-coder/JASM1/compare/v1.0.0...v1.1.0) (2026-10-13)
+
+
+### Features
+
+* **netdisk:** 注册 NetdiskClientLauncher 单例 ([259636f](https://github.com/qsy123-coder/JASM1/commit/259636f39ecc7b8b51792e425f9500d29089bfda))
+* **netdisk:** 点网盘卡片时拉起对应客户端（已在跑则只复制） ([74b1711](https://github.com/qsy123-coder/JASM1/commit/74b171158233d09e6f2ba9447b3984a0f4719881))
+* **netdisk:** 网盘卡片点击后复制链接并打开客户端 ([73a16ce](https://github.com/qsy123-coder/JASM1/commit/73a16cebc43af07441df4293463e507bb6e72597))
+* **netdisk:** 网盘客户端目录表与平台识别 ([eb5d11e](https://github.com/qsy123-coder/JASM1/commit/eb5d11edfc7c389050d4078bc3119d7058d6504d))
+* **netdisk:** 解析 shell 命令串并排候选 exe 路径 ([2686ab2](https://github.com/qsy123-coder/JASM1/commit/2686ab2be3d0b37567b6fa91a1fc2d0bff1fc43b))
+
+
+### Bug Fixes
+
+* **mod-market:** 图片加载失败后重试，修首屏预览图永久空着 ([fe0ecca](https://github.com/qsy123-coder/JASM1/commit/fe0eccaf627587a7520954e55e1b3aa4e1e26dad))
+* **mod-market:** 首次进市场页补两次图片认领，修首屏预览图不加载 ([d88031c](https://github.com/qsy123-coder/JASM1/commit/d88031ca045daa2e20f63e3ba3f2dcb69947cb04))
+
+
+### Tests
+
+* **netdisk:** 覆盖命令串解析与候选路径排序 ([09a8ab8](https://github.com/qsy123-coder/JASM1/commit/09a8ab81213d5425ee470754721553b8c270e11a))
+* **netdisk:** 覆盖网盘平台识别的边界 ([051970e](https://github.com/qsy123-coder/JASM1/commit/051970e56b4676ec14f8e54a33b990119e2edf68))
+
 ## 1.0.0 (2026-10-12)
 
 
