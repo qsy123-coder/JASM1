@@ -430,6 +430,11 @@ public partial class App : Application
                 services.AddTransient<ModMarketPage>();
                 services.AddSingleton<ModMarketService>();
 
+                // 每日更新：市场工具栏那个按钮进来的一页（最近 7 天有更新的 mod，按天分组）。
+                // 数据通道与市场共用同一个 ModMarketService 单例，这里只多一页一 VM。
+                services.AddTransient<DailyUpdatesViewModel>();
+                services.AddTransient<DailyUpdatesPage>();
+
                 // 网盘客户端：点市场详情里的网盘卡片时，复制链接之余把对应客户端拉起来（已在跑则只复制）
                 services.AddSingleton<Services.Netdisk.NetdiskClientLauncher>();
 
