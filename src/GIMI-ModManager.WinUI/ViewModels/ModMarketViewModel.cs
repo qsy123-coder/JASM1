@@ -1,6 +1,7 @@
 using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using GIMI_ModManager.WinUI.Contracts.Services;
 using GIMI_ModManager.WinUI.Contracts.ViewModels;
 using GIMI_ModManager.WinUI.Models;
 using GIMI_ModManager.WinUI.Services;
@@ -14,7 +15,7 @@ public partial class ModMarketViewModel : ObservableRecipient, INavigationAware
     private readonly ILogger _logger;
     private readonly ModMarketService _modMarketService;
     private readonly NotificationManager _notificationManager;
-    private CancellationTokenSource? _searchCts;
+    private readonly INavigationService _navigationService;
 
     // ─── Sidebar: Characters from Supabase ─────────────────────
 
@@ -99,11 +100,12 @@ public partial class ModMarketViewModel : ObservableRecipient, INavigationAware
     }
 
     public ModMarketViewModel(ILogger logger, ModMarketService modMarketService,
-        NotificationManager notificationManager)
+        NotificationManager notificationManager, INavigationService navigationService)
     {
         _logger = logger.ForContext<ModMarketViewModel>();
         _modMarketService = modMarketService;
         _notificationManager = notificationManager;
+        _navigationService = navigationService;
     }
 
     // ─── Navigation ────────────────────────────────────────────
@@ -141,33 +143,56 @@ public partial class ModMarketViewModel : ObservableRecipient, INavigationAware
 
     // ─── Property Changes ─────────────────────────────────────
 
-    partial void OnSelectedCategoryChanged(ModMarketCategory? value) => _ = ReloadModsAsync();
+    // 换分类走 RequestReload,与下面三个筛选器同一个入口 —— **不能**直接 _ = ReloadModsAsync()。
+    // 直接调的话,加载中点另一个分类会被 LoadModsAsync 开头的 IsLoading 守卫整个吞掉:
+    // 请求根本不发,而列表已经被清空,上一次(旧分类)的结果回来就填了进去。
+    partial void OnSelectedCategoryChanged(ModMarketCategory? value) => RequestReload();
 
+    /// <summary>
+    /// 输入**不**触发搜索 —— 搜索由回车键与工具栏的「搜索」按钮触发，见 <see cref="Search"/>。
+    /// 这里只剩一条职责：**清空即恢复全部**。
+    ///
+    /// <para>
+    /// 判据是"值变空"而不是"点了文本框自带的 ✕"：全选删除与点 ✕ 对用户是同一件事，
+    /// 没必要去分辨那次点击。留着它是因为"清空了却还要再按一次回车才回到全部"太容易漏。
+    /// </para>
+    /// </summary>
     partial void OnSearchTextChanged(string value)
     {
-        _searchCts?.Cancel();
-        _searchCts = new CancellationTokenSource();
-        var token = _searchCts.Token;
-        _ = Task.Run(async () =>
-        {
-            try
-            {
-                await Task.Delay(300, token);
-                if (!token.IsCancellationRequested)
-                    App.MainWindow.DispatcherQueue.TryEnqueue(() => _ = ReloadModsAsync());
-            }
-            catch (TaskCanceledException) { }
-        }, token);
+        if (string.IsNullOrEmpty(value))
+            RequestReload();
     }
 
     private bool _reloadPending;
+
+    /// <summary>
+    /// 加载「代」号,只增不减,只当令牌用 —— 数值本身没有意义。
+    ///
+    /// <para>
+    /// 加载是异步的,await 回来时这次结果可能已经过期(用户在等待期间换了分类 / 筛选)。
+    /// <see cref="LoadModsAsync"/> 在开头记下当代号、await 之后对一次,不等就把结果丢掉。
+    /// </para>
+    /// </summary>
+    private int _loadGeneration;
 
     partial void OnSelectedCategoryFilterChanged(string value) => RequestReload();
     partial void OnSelectedContentFilterChanged(string value) => RequestReload();
     partial void OnSelectedSortOptionChanged(string value) => RequestReload();
 
+    /// <summary>
+    /// 「换分类 / 换筛选」后的重载入口。
+    ///
+    /// <para>
+    /// 两件事缺一不可:① 记下"稍后还要重载一次"(在飞的那次挡不住后发的请求);
+    /// ② **当场作废在飞的那次结果** —— 只做 ① 是不够的,那次请求回来时列表已被清空,
+    /// 它会把自己的内容写进去,于是出现「侧边栏选着爱弥斯、列表里却是爱弥斯的机甲」;
+    /// 更糟的是紧接着的「加载更多」会按**新**分类查下一页、追加到这批旧内容上,
+    /// 两个分类就真的混在同一屏里了(实机反馈的"来回切换会互相混入"就是这条)。
+    /// </para>
+    /// </summary>
     private void RequestReload()
     {
+        _loadGeneration++;
         if (IsLoading) { _reloadPending = true; return; }
         _ = ReloadModsAsync();
     }
@@ -183,6 +208,20 @@ public partial class ModMarketViewModel : ObservableRecipient, INavigationAware
     [RelayCommand]
     private async Task RefreshAsync() => await ReloadModsAsync();
 
+    /// <summary>
+    /// 执行搜索。由回车键与工具栏的「搜索」按钮触发 —— 刻意**不做输入即搜**：
+    /// 每敲一个字就重载一次，既会把用户正在看的列表反复清空、也会白白拉一串请求
+    /// （该出口配额超限正是市场降级到离线快照的常见原因）。
+    /// </summary>
+    /// <remarks>
+    /// 必须走 <see cref="RequestReload"/>，**不能**直接 <c>_ = ReloadModsAsync()</c> ——
+    /// 直接调会在 <see cref="LoadModsAsync"/> 开头的 IsLoading 守卫处被整个吞掉：列表已被清空、
+    /// 请求却没发出去、在飞的旧结果又因过期被丢弃，页面就卡在一片空白上且无法自愈。
+    /// 这正是实机反馈的「明明打字搜索了但是列表是空的」，也是分类入口早先踩过的同一个坑。
+    /// </remarks>
+    [RelayCommand]
+    private void Search() => RequestReload();
+
     [RelayCommand]
     private void OpenModDetail(ModMarketMod? mod)
     {
@@ -196,32 +235,28 @@ public partial class ModMarketViewModel : ObservableRecipient, INavigationAware
     }
 
     /// <summary>
-    /// 打开「每日更新」页（<c>wave-mod.top/updates</c>）—— 市场里这些包的新增/更新列表。
+    /// 打开「每日更新」页（<see cref="DailyUpdatesViewModel"/>）—— 最近 7 天有更新的 mod，按天分组。
     ///
-    /// 用系统默认浏览器打开（<c>Launcher</c>），不是页内 WebView：那里是要下载东西的站点，
-    /// 走浏览器的下载/登录/防病毒那一整套更顺，页内嵌一个浏览器反而处处受限。
-    /// 打不开（没有默认浏览器 / 系统拒绝）也不弹框 —— 这是次要入口，不值得打断用户。
+    /// 早先这里是**一跳外链**（<c>Launcher.LaunchUriAsync</c> 打开 <c>wave-mod.top/updates</c>）：
+    /// 用户被踢出应用、看完还得自己切回来，站点的可用性还成了这个功能的单点依赖。
+    /// 现在整页搬进应用内 —— 那批数据本来就来自同一张 Supabase 表（见 ModMarketService），
+    /// 跳出去只是把已经拿得到的东西交浏览器再渲染一遍。
     /// </summary>
     [RelayCommand]
-    private async Task OpenWebsite()
+    private void OpenDailyUpdates()
     {
-        try
-        {
-            await Windows.System.Launcher.LaunchUriAsync(new Uri(ModWebsiteUrl));
-        }
-        catch (Exception e)
-        {
-            _logger.Warning(e, "打开每日更新页失败: {Url}", ModWebsiteUrl);
-        }
+        _navigationService.NavigateTo(typeof(DailyUpdatesViewModel).FullName!);
     }
-
-    /// <summary>「每日更新」页地址。集中放这儿，改域名/路径只动一行。</summary>
-    private const string ModWebsiteUrl = "https://www.wave-mod.top/updates";
 
     // ─── Data Loading ──────────────────────────────────────────
 
+    /// <summary>
+    /// 从第一页重来。开新的一代(见 <see cref="_loadGeneration"/>)—— 这次重载之前的任何
+    /// 在飞请求,回来时都对不上号,会被丢掉。
+    /// </summary>
     private async Task ReloadModsAsync()
     {
+        _loadGeneration++;
         _currentPage = 1;
         Mods.Clear();
         // 横幅描述的是「当前这一屏数据」。数据都清了,横幅也必须跟着走,
@@ -245,6 +280,10 @@ public partial class ModMarketViewModel : ObservableRecipient, INavigationAware
         // Only increment page when appending (load-more). Must be done after
         // the IsLoading guard to prevent races from LayoutUpdated / ViewChanged.
         if (append) _currentPage++;
+
+        // 这次加载属于哪一代。重载会在开始前换代(见 ReloadModsAsync),加载更多则留在当代 ——
+        // 所以这里直接取当前值即可,不用自己增。await 回来时对一下,不等就说明结果过期了。
+        var generation = _loadGeneration;
 
         StatusMessage = "正在加载...";
 
@@ -292,6 +331,17 @@ public partial class ModMarketViewModel : ObservableRecipient, INavigationAware
                 updatedAfter: updatedAfter,
                 page: _currentPage,
                 pageSize: PageSize);
+
+            // 过期结果一律丢弃(用户在等待期间换了分类 / 筛选)。
+            // 不丢的话:列表已被那次重载清空,这批旧内容会被写进去(侧边栏选着爱弥斯、内容却是
+            // 爱弥斯的机甲),随后一次「加载更多」还会按**新**分类查下一页追加到它上面 ——
+            // 两个分类就混在同一屏里了。
+            if (generation != _loadGeneration)
+            {
+                _logger.Debug("丢弃过期的加载结果(第 {Stale} 代,当前第 {Current} 代,append={Append})",
+                    generation, _loadGeneration, append);
+                return;
+            }
 
             var mods = result.Mods;
             var total = result.TotalCount;
