@@ -235,42 +235,60 @@
                     <ColumnDefinition Width="Auto" />
                     <ColumnDefinition Width="Auto" />
                     <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="Auto" />
                 </Grid.ColumnDefinitions>
 
+                <!-- 搜索**不在输入时触发**：输入本身不发任何请求，只在按回车 / 点右边那个「搜索」按钮 /
+                     清空时才重载。Text 仍是 PropertyChanged 双向绑定 —— "框里的字就是查询条件"，
+                     不引入"已提交 / 未提交"两份状态（两份状态会带来"改了词、切个分类却搜的是旧词"这类更难解释的行为）。 -->
                 <TextBox x:Name="SearchBox" Grid.Column="0"
                          VerticalAlignment="Center" PlaceholderText="搜索模组..."
                          l:Uids.Uid="ModMarket_SearchPlaceholder"
                          Text="{x:Bind ViewModel.SearchText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                         KeyDown="SearchBox_KeyDown"
                          CornerRadius="6" Margin="0,0,8,0">
                     <TextBox.Resources>
                         <SolidColorBrush x:Key="TextControlBackgroundFocused" Color="White" />
                         <SolidColorBrush x:Key="TextControlBackground" Color="White" />
                     </TextBox.Resources>
+                    <!-- Ctrl+F 聚焦搜索框。挂在 TextBox 上、且用 Invoked 而不是 Command，
+                         与角色详情页那处写法一致。 -->
+                    <TextBox.KeyboardAccelerators>
+                        <KeyboardAccelerator Key="F" Modifiers="Control"
+                                             Invoked="SearchAccelerator_OnInvoked" />
+                    </TextBox.KeyboardAccelerators>
                 </TextBox>
 
-                <ComboBox Grid.Column="1" Width="110" VerticalAlignment="Center"
+                <!-- 「搜索」按钮：与回车完全同义。做成独立按钮而不是输入框内嵌图标 —— 这一排本来
+                     全是独立控件，它跟它们同高、同圆角、同间距，而且点起来大。 -->
+                <Button Grid.Column="1" Height="36" VerticalAlignment="Center" Margin="0,0,8,0"
+                        Content="搜索"
+                        CornerRadius="6"
+                        Command="{x:Bind ViewModel.SearchCommand}" />
+
+                <ComboBox Grid.Column="2" Width="110" VerticalAlignment="Center"
                           CornerRadius="6" Background="White" Margin="0,0,8,0"
                           ItemsSource="{x:Bind ViewModel.CategoryFilterOptions}"
                           SelectedItem="{x:Bind ViewModel.SelectedCategoryFilter, Mode=TwoWay}" />
 
-                <ComboBox Grid.Column="2" Width="120" VerticalAlignment="Center"
+                <ComboBox Grid.Column="3" Width="120" VerticalAlignment="Center"
                           CornerRadius="6" Background="White" Margin="0,0,8,0"
                           ItemsSource="{x:Bind ViewModel.ContentFilterOptions}"
                           SelectedItem="{x:Bind ViewModel.SelectedContentFilter, Mode=TwoWay}" />
 
-                <ComboBox Grid.Column="3" Width="100" VerticalAlignment="Center"
+                <ComboBox Grid.Column="4" Width="100" VerticalAlignment="Center"
                           CornerRadius="6" Background="White" Margin="0,0,8,0"
                           ItemsSource="{x:Bind ViewModel.SortOptions}"
                           SelectedItem="{x:Bind ViewModel.SelectedSortOption, Mode=TwoWay}" />
 
-                <!--  「每日更新」页（wave-mod.top/updates）—— 市场里这些包的新增/更新列表。
-                      工具栏上一个纯文字按钮就够了:图标会让人以为是站内功能，而它是往外跳的。  -->
-                <Button Grid.Column="4" Height="36" VerticalAlignment="Center" Margin="0,0,8,0"
+                <!--  「每日更新」—— 最近 7 天有更新的 mod，按天分组，在应用内整页展示。
+                      工具栏上一个纯文字按钮就够了:图标会让人以为是站内已有功能，而它是新开的一页。  -->
+                <Button Grid.Column="5" Height="36" VerticalAlignment="Center" Margin="0,0,8,0"
                         Content="每日更新"
                         CornerRadius="6"
-                        Command="{x:Bind ViewModel.OpenWebsiteCommand}" />
+                        Command="{x:Bind ViewModel.OpenDailyUpdatesCommand}" />
 
-                <Button Grid.Column="5" Width="36" Height="36" VerticalAlignment="Center"
+                <Button Grid.Column="6" Width="36" Height="36" VerticalAlignment="Center"
                         ToolTipService.ToolTip="下载管理" l:Uids.Uid="ModMarket_DownloadManager"
                         Background="Transparent" BorderThickness="0" CornerRadius="6"
                         Command="{x:Bind ViewModel.OpenDownloadManagerCommand}">
