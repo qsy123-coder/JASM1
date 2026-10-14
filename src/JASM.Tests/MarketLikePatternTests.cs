@@ -3,9 +3,19 @@ using GIMI_ModManager.Core.ModMarket;
 namespace JASM.Tests;
 
 /// <summary>
-/// 锁住 PostgREST <c>title=ilike.*q*</c> 的复刻：搜索词是 **LIKE 模式**而不是字面量子串。
-/// 线上把用户输入夹在 <c>*…*</c> 之间后交给 Postgres，所以 <c>%</c> / <c>_</c> / <c>\</c>
-/// 在库里是元字符 —— 用 <c>string.Contains</c> 会直接不等价（库里 30 个标题含下划线）。
+/// 锁住搜索词的语义：**只有 <c>*</c> 是通配符**，<c>%</c> <c>_</c> <c>\</c> 一律字面量，整体"包含"。
+///
+/// <para>
+/// 这份契约是**与在线路径（PostgREST <c>title=ilike</c>）共用的**：这里的每条断言，都必须能在
+/// 线上用同样一个关键词复现（在线侧靠 <c>ModMarketService.BuildQuery</c> 做等价转义）。
+/// 改这里就要改那里 —— 否则降级到快照时同一关键词会给出不同结果。
+/// </para>
+///
+/// <para>
+/// 早期版本照搬了 Postgres LIKE 的元字符规则（<c>_</c> 当任意单字符），于是搜 <c>a_b</c> 会连带命中
+/// <c>axb</c>。但库里标题大量来自文件名（<c>by _eldarC</c>、<c>Rain_9</c>），下划线是真字面量 ——
+/// 这一组用例现在锁的就是"搜它只出那个作者"。
+/// </para>
 /// </summary>
 public class MarketLikePatternTests
 {
@@ -21,7 +31,7 @@ public class MarketLikePatternTests
     public void DoesNotMatch_UnrelatedTitle() =>
         Assert.False(MarketLikePattern.Create("心月狐").IsMatch("哥伦比娅 by woju"));
 
-    /// <summary>空/空白模式在线上不会出现（只有 search 非空白时才加这个过滤），取「全部匹配」。</summary>
+    /// <summary>空/空白模式取「全部匹配」（上层只有 search 非空白时才加这个过滤）。</summary>
     [Theory]
     [InlineData(null)]
     [InlineData("")]
@@ -35,59 +45,65 @@ public class MarketLikePatternTests
     public void NullValue_NeverMatches() =>
         Assert.False(MarketLikePattern.Create("a").IsMatch(null));
 
-    /// <summary><c>*</c> 在 PostgREST 里被换成 <c>%</c>，两级都要当通配符。</summary>
-    [Theory]
-    [InlineData("100%")]
-    [InlineData("100*")]
-    public void Wildcard_MatchesAnyLength(string pattern)
+    /// <summary><c>*</c> 是唯一通配符，匹配任意长度。</summary>
+    [Fact]
+    public void Asterisk_MatchesAnyLength()
     {
-        var like = MarketLikePattern.Create(pattern);
+        var like = MarketLikePattern.Create("100*");
+
         Assert.True(like.IsMatch("Percent 100% Wildcard"));
         Assert.True(like.IsMatch("100abc"));
         Assert.False(like.IsMatch("10"));
     }
 
     /// <summary>
-    /// 最容易写错的一条：<c>_</c> 是「任意单字符」而不是字面下划线。
-    /// fixture 里 "a_b underscore" 与 "axb underscore" 成对存在正是为了锁这个。
+    /// 最容易写错的一条：<c>_</c> 是**字面下划线**，不是「任意单字符」。
+    /// 真实标题里的 <c>by _eldarC</c> 必须能被搜到，而 <c>by XeldarC</c> 不该被它带出来。
     /// </summary>
     [Fact]
-    public void Underscore_MatchesAnySingleCharacter_NotLiteralUnderscore()
+    public void Underscore_IsLiteral_NotSingleCharacterWildcard()
+    {
+        var like = MarketLikePattern.Create("_eldarC");
+
+        Assert.True(like.IsMatch("可凯露（ctrl+num+1234）by _eldarC"));
+        Assert.False(like.IsMatch("by XeldarC")); // 下划线只匹配它自己
+    }
+
+    /// <summary>同理：搜 <c>a_b</c> 不该命中 <c>axb</c>。</summary>
+    [Fact]
+    public void Underscore_Literal_DoesNotSpanOtherCharacters()
     {
         var like = MarketLikePattern.Create("a_b");
 
         Assert.True(like.IsMatch("a_b underscore"));
-        Assert.True(like.IsMatch("axb underscore"));
-        Assert.False(like.IsMatch("ab underscore")); // 少一个字符就不该中
+        Assert.False(like.IsMatch("axb underscore"));
+        Assert.False(like.IsMatch("ab underscore"));
     }
 
-    /// <summary>真实标题里的 <c>by _eldarC</c>：线上 <c>%_eldarC%</c> 会命中（下划线匹配自身）。</summary>
+    /// <summary><c>%</c> 同样是字面量 —— 它只在 Postgres 的 LIKE 语法里才是通配符，对用户不该是。</summary>
     [Fact]
-    public void Underscore_MatchesRealTitle()
+    public void Percent_IsLiteral()
     {
-        Assert.True(MarketLikePattern.Create("_eldarC").IsMatch("可凯露（ctrl+num+1234）by _eldarC"));
-        Assert.True(MarketLikePattern.Create("_eldarC").IsMatch("by XeldarC"));
+        var like = MarketLikePattern.Create("50%");
+
+        Assert.True(like.IsMatch("折扣 50% off"));
+        Assert.False(like.IsMatch("折扣 509 off")); // 不再是"任意长度"
     }
 
-    /// <summary><c>\x</c> 转义成字面量 —— 这是唯一能表达「真的要一个下划线」的方式。</summary>
+    /// <summary><c>\</c> 按字面量处理，不再吃掉后一个字符。</summary>
     [Fact]
-    public void Backslash_EscapesNextCharacterToLiteral()
+    public void Backslash_IsLiteral()
     {
-        var literal = MarketLikePattern.Create(@"\_eldarC");
+        var like = MarketLikePattern.Create(@"a\b");
 
-        Assert.True(literal.IsMatch("by _eldarC"));
-        Assert.False(literal.IsMatch("by XeldarC"));
+        Assert.True(like.IsMatch(@"x a\b y"));
+        Assert.False(like.IsMatch("x ab y")); // 反斜杠不再被当转义符吞掉
     }
 
-    /// <summary>转义反斜杠自身：模式里的两个反斜杠表示一个字面反斜杠。</summary>
+    /// <summary>以反斜杠结尾的输入：字面量匹配，且不会让在线请求报错（在线侧会把它转义成 <c>\\</c>）。</summary>
     [Fact]
-    public void Backslash_EscapesBackslash()
-    {
-        var like = MarketLikePattern.Create(@"\\");
-
-        Assert.True(like.IsMatch(@"Back\slash Title"));
-        Assert.False(like.IsMatch("Back/slash Title"));
-    }
+    public void TrailingBackslash_IsLiteral() =>
+        Assert.True(MarketLikePattern.Create(@"a\").IsMatch(@"xa\y"));
 
     /// <summary>正则元字符必须被当字面量，否则一个 "(" 就能让匹配行为跑偏。</summary>
     [Theory]
@@ -99,6 +115,7 @@ public class MarketLikePatternTests
     [InlineData("^")]
     [InlineData("$")]
     [InlineData("|")]
+    [InlineData(".")]
     public void RegexMetacharacters_AreLiteral(string pattern)
     {
         var like = MarketLikePattern.Create(pattern);
@@ -106,11 +123,6 @@ public class MarketLikePatternTests
         Assert.True(like.IsMatch($"x{pattern}y"));
         Assert.False(like.IsMatch("xy"));
     }
-
-    /// <summary>结尾孤立的反斜杠：Postgres 会直接报错，本地取宽松（当字面量）。</summary>
-    [Fact]
-    public void TrailingBackslash_IsTreatedAsLiteral() =>
-        Assert.True(MarketLikePattern.Create(@"a\").IsMatch(@"xa\y"));
 
     /// <summary>NonBacktracking 的意义：这种模式在线性引擎下必须立刻返回，而不是回溯爆炸。</summary>
     [Fact]
