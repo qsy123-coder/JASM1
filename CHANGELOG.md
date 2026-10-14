@@ -1,5 +1,45 @@
 # Changelog
 
+## [1.2.0](https://github.com/qsy123-coder/JASM1/compare/v1.1.0...v1.2.0) (2026-10-14)
+
+
+### Features
+
+* **daily-updates:** 最近 7 天按上海日历日分组的列表 VM ([eead8d1](https://github.com/qsy123-coder/JASM1/commit/eead8d157b0b2d77c9d779af3aca67b5cd1c351d))
+* **daily-updates:** 日期节模型，分组口径照抄 wave-mod 站点 ([0c313e4](https://github.com/qsy123-coder/JASM1/commit/0c313e4e1d53425abf9839e0a48647d3e3132ff4))
+* **daily-updates:** 每日更新页视图（卡片 + 日期导航 + 返回） ([37d9b15](https://github.com/qsy123-coder/JASM1/commit/37d9b15a54c1fb9c5d8c9ebff94455cc15e86f6c))
+* **daily-updates:** 注册每日更新页与 VM ([8aa9013](https://github.com/qsy123-coder/JASM1/commit/8aa9013a3f4929a0ca6e07029018ebf56ec80195))
+* **daily-updates:** 注册页面类型 ([60b5788](https://github.com/qsy123-coder/JASM1/commit/60b57883c9f76a2399e482f39ab780e2be4d3075))
+* **daily-updates:** 页面逻辑（卡片管线、日期滚动高亮、返回） ([b3ecdc4](https://github.com/qsy123-coder/JASM1/commit/b3ecdc4409d8430d92ee9a836fd2ed20503b14ca))
+* **mod-market:** 搜索框回车触发与 Ctrl+F 聚焦 ([2d0226d](https://github.com/qsy123-coder/JASM1/commit/2d0226deb9875beba77d4c10546dceb82d1a70fe))
+* **mod-market:** 每日更新入口改页内导航；搜索改回车加按钮并支持 Ctrl+F ([ab7860d](https://github.com/qsy123-coder/JASM1/commit/ab7860d17fbca8e77b1bb64c7f71466b06f69478))
+
+
+### Bug Fixes
+
+* **mod-market:** 修分类与搜索切换的竞态卡死，搜索改显式触发 ([fa91930](https://github.com/qsy123-coder/JASM1/commit/fa919302d77b323c31836abc38c38d9bab4918e6))
+* **mod-market:** 快照搜索口径对齐在线，仅星号为通配符 ([8d735ce](https://github.com/qsy123-coder/JASM1/commit/8d735ce4bfa1317ff7f4f44594fe599aa7f62973))
+* **mod-market:** 搜索词特殊字符按字面量匹配 ([51b572d](https://github.com/qsy123-coder/JASM1/commit/51b572dd300306e9d0c2f9b2694dc0153c59849e))
+
+
+### Miscellaneous
+
+* **characters:** 补角色别名 —— Cartethyia/芙露德莉斯、Luuk/陆赫斯、aemeath/爱弥斯的机甲 ([f691638](https://github.com/qsy123-coder/JASM1/commit/f69163809de2dda4329c41b3f9573312521a53a6))
+* **i18n:** 陆赫斯的中文显示名改为「陆·赫斯」 ([ef13f18](https://github.com/qsy123-coder/JASM1/commit/ef13f185f61849200f27e03d2b1a5622e353f714))
+
+
+### Documentation
+
+* Mod 市场搜索优化 PRD ([0caaceb](https://github.com/qsy123-coder/JASM1/commit/0caaceb6522b3c30fb40287d2532b81c8acdf700))
+* **mod-market:** 更正 Search 字段的语义说明 ([e7da747](https://github.com/qsy123-coder/JASM1/commit/e7da7475ba9d87655cb54f1a942a06add60b17aa))
+* 每日更新页 PRD ([138f345](https://github.com/qsy123-coder/JASM1/commit/138f345284534144ad499e2240be18a33a5fc5b4))
+
+
+### Tests
+
+* **mod-market:** 搜索用例改为字面量口径 ([8f67cdc](https://github.com/qsy123-coder/JASM1/commit/8f67cdc824445d62c4a02f64665a2f054f14a734))
+* **mod-market:** 锁住搜索词新口径 ([c31c19f](https://github.com/qsy123-coder/JASM1/commit/c31c19f229ee3520bdde53f308c25599ac0b3fab))
+
 ## [1.1.0](https://github.com/qsy123-coder/JASM1/compare/v1.0.0...v1.1.0) (2026-10-13)
 
 
