@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.2.1](https://github.com/qsy123-coder/JASM1/compare/v1.2.0...v1.2.1) (2026-10-14)
+
+
+### Bug Fixes
+
+* **netdisk:** 复制链接失败时自动重试，修启动后首次点卡片必弹失败 ([f4a6b86](https://github.com/qsy123-coder/JASM1/commit/f4a6b86bdf65bdc57bc1567e37ec14e2fbcfdc0d))
+
 ## [1.2.0](https://github.com/qsy123-coder/JASM1/compare/v1.1.0...v1.2.0) (2026-10-14)
 
 
