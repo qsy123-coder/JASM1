@@ -319,21 +319,31 @@ public class MarketQueryEngineTests
         Assert.Empty(result.Items);
     }
 
-    // ---- title=ilike.*q* ---------------------------------------------------
+    // ---- 搜索（title 匹配） ------------------------------------------------
 
+    /// <summary>
+    /// 搜索词里**只有 <c>*</c> 是通配符**，其余（含 <c>%</c> <c>_</c> <c>\</c>）一律字面量。
+    /// 完整语义见 <c>MarketLikePattern</c> 的类注释 —— 那是与在线路径共用的契约。
+    /// </summary>
     [Fact]
-    public void Search_UsesLikeSemantics_NotLiteralContains()
+    public void Search_OnlyAsteriskIsWildcard_RestIsLiteral()
     {
         var rows = new[]
         {
             new TestMarketRow { Id = Id(1), Title = "心月狐 by kuzan" },
             new TestMarketRow { Id = Id(2), Title = "a_b underscore" },
-            new TestMarketRow { Id = Id(3), Title = "axb underscore" }
+            new TestMarketRow { Id = Id(3), Title = "axb underscore" },
+            new TestMarketRow { Id = Id(4), Title = "axxb underscore" }
         };
 
+        // 大小写不敏感、按子串命中。
         Assert.Equal(new[] { "心月狐 by kuzan" }, Run(rows, new MarketQuery { Search = "KUZAN" }).Items.Select(r => r.Title).ToArray());
-        // "a_b" 作为 LIKE 模式同时命中 "a_b" 与 "axb" —— 字面量匹配只会命中前者。
-        Assert.Equal(2, Run(rows, new MarketQuery { Search = "a_b" }).TotalCount);
+
+        // "a_b" 里的下划线是字面量：只命中真含 "a_b" 的那一条，不再把 "axb" 带来。
+        Assert.Equal(new[] { "a_b underscore" }, Run(rows, new MarketQuery { Search = "a_b" }).Items.Select(r => r.Title).ToArray());
+
+        // "*" 仍是通配符（两条路径都如此，理由见 MarketLikePattern 里那段）。
+        Assert.Equal(3, Run(rows, new MarketQuery { Search = "a*b" }).TotalCount);
     }
 
     [Fact]
