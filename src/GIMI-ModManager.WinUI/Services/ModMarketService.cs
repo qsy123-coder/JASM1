@@ -19,6 +19,7 @@ public class ModMarketService
 
     // 网格/详情面板实际用到的字段。description 等大字段(单行好几 KB)在列表里不拉,
     // 点开详情时再按 id 单独拉一次(见 GetModByIdAsync),避免 24 个卡片每行都背 description 拖慢首屏。
+    // created_at 在列表列里是**承重的**:「每日更新」页按它分组(与 wave-mod 站点同一条规则)。
     private static readonly string GridSelect =
         "id,title,character,images,download_url,nsfw,views,likes_count,comments_count,downloads_count,drive_links,created_at";
 
@@ -301,7 +302,16 @@ public class ModMarketService
             imageLookup = new();
         }
 
-        // Icons for special Supabase-only categories
+        // Icons for special Supabase-only categories.
+        //
+        // 键是**后端分类名本身**,不是本地角色名 —— 这几类在本地 characters.json 里没有对应角色,
+        // 只能逐字映射到仓库里已有的图标文件。后两行是新线(market1)后端自己的桶名,
+        // 与旧线那三个(MarketCategoryKeys)并存:两边共用这张表,互不干扰。
+        //
+        // 精确匹配的代价是后端改名后会静默退回通用图标(见下面 ResolveImage 的 Warning)——
+        // 这里刻意不做前缀/模糊匹配:桶名是后端的数据,猜错会把两个分类的头像串成同一张。
+        // 角色名的中文别名**不走这张表**,加在 characters.json 的 Keys 里
+        // (与 Galbrena/嘉贝莉娜、Aemeath/爱弥斯 同一个机制,见上面构建 imageLookup 那几行)。
         var iconDir = Path.Combine(
             AppDomain.CurrentDomain.BaseDirectory,
             "Assets", "Games", "WuWa", "Images", "Characters");
@@ -310,6 +320,10 @@ public class ModMarketService
             [MarketCategoryKeys.OtherMisc] = "other.png",
             [MarketCategoryKeys.Skins] = "skins.png",
             [MarketCategoryKeys.Ui] = "ui.png",
+            // 滑翔翼/翱翔翼/科考摩托 —— 滑翔翼类,用 GameService 里 Gliders 角色的那张图
+            ["滑翔翼,翱翔翼,科考摩托"] = "Gliders.webp",
+            // 反虚化/ui界面/场景/葫芦/特效等 —— UI 类杂物桶,归到与 UI 同一张图标
+            ["反虚化，ui界面，场景，葫芦，特效等"] = "ui.png",
         };
 
         // Helper to resolve an image for a category key
@@ -464,7 +478,7 @@ public class ModMarketService
         if (modsOnly)
             filters.Add("character=not.is.null");
         if (!string.IsNullOrWhiteSpace(search))
-            filters.Add($"title=ilike.*{Uri.EscapeDataString(search)}*");
+            filters.Add($"title=ilike.{Uri.EscapeDataString(BuildSearchPattern(search))}");
 
         // nsfw 结论只解析一次:分类级覆盖内容级这条优先级规则写两遍迟早会分叉。
         var nsfw = nsfwOnly ?? contentFilter switch
@@ -478,6 +492,8 @@ public class ModMarketService
 
         if (directDownloadOnly)
             filters.Add("download_url=not.is.null");
+        // 注意这个名字:叫 updatedAfter,比的却是 **created_at**。这是既有行为,市场页的「最近更新」
+        // 一直在用,不去动它。「每日更新」页要的正是"按创建时间取窗口"这个语义,所以直接复用。
         if (updatedAfter.HasValue)
             filters.Add($"created_at=gte.{updatedAfter.Value.ToUniversalTime():yyyy-MM-dd}");
 
@@ -538,6 +554,39 @@ public class ModMarketService
         };
 
         return new MarketRequest(filterString, url, local);
+    }
+
+    /// <summary>
+    /// 把用户搜索词转成 PostgREST <c>ilike</c> 的值。**这是与本地快照引擎的契约** ——
+    /// 语义必须和 <c>MarketLikePattern</c> 逐字一致，否则降级到快照时同一关键词会给出不同结果。
+    ///
+    /// <para>
+    /// 两个要点：
+    /// </para>
+    /// <list type="number">
+    ///   <item>
+    ///     **不再用 <c>*</c> 当"包含"分隔符**，改用 URL 编码的真 <c>%</c>。因为 PostgREST 会把值里
+    ///     **所有** <c>*</c> 无条件换成 <c>%</c>（实测 <c>%*%</c> 命中全部），用它就分不清
+    ///     "我们的通配"和"用户输入的星号"。
+    ///   </item>
+    ///   <item>
+    ///     对用户输入做 Postgres LIKE 转义：<c>\</c> → <c>\\</c>、<c>%</c> → <c>\%</c>、<c>_</c> → <c>\_</c>。
+    ///     这样搜 <c>_eldarC</c> 只出那个作者，不再连带把 <c>XeldarC</c> 带出来。
+    ///     <c>*</c> **刻意不转义** —— 在线路径表达不了字面星号（同上那条 PostgREST 行为），
+    ///     所以两条路径都让它保持通配。理由与代价见 <c>MarketLikePattern</c> 的类注释。
+    ///   </item>
+    /// </list>
+    ///
+    /// <para>转义顺序要紧：反斜杠必须先换，否则会把后面补出来的反斜杠再转一遍。</para>
+    /// </summary>
+    private static string BuildSearchPattern(string search)
+    {
+        var escaped = search
+            .Replace("\\", "\\\\")
+            .Replace("%", "\\%")
+            .Replace("_", "\\_");
+
+        return $"%{escaped}%";
     }
 
     /// <summary>
