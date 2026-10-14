@@ -38,6 +38,7 @@ public class PageService : IPageService
         Configure<CreateCharacterViewModel, CreateCharacterPage>();
         Configure<ModMarketViewModel, ModMarketPage>();
         Configure<ModStoreViewModel, ModStorePage>();
+        Configure<DailyUpdatesViewModel, DailyUpdatesPage>();
     }
 
     public Type GetPageType(string key)
