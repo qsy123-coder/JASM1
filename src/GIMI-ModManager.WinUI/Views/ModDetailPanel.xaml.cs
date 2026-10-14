@@ -287,9 +287,9 @@ public sealed partial class ModDetailPanel : UserControl
         var (tip, tipTextBlock) = BuildDriveTip(tipText, tipImage);
 
         // 点击 = 复制链接(而非跳转浏览器) → 顺手把对应客户端拉起来(已在跑就只复制) → 展开说明文字框
-        btn.Click += (s, e) =>
+        btn.Click += async (s, e) =>
         {
-            if (!CopyNetdiskLink(url, name)) return;
+            if (!await CopyNetdiskLinkAsync(url, name)) return;
 
             var outcome = App.GetService<NetdiskClientLauncher>().Launch(name, url);
             tipTextBlock.Text = GetDriveTipText(name, outcome);
@@ -314,26 +314,63 @@ public sealed partial class ModDetailPanel : UserControl
         };
     }
 
-    /// <summary>复制网盘链接到剪贴板（不再直接跳转浏览器）。成功返回 true，失败弹错误 toast 并返回 false。</summary>
-    private bool CopyNetdiskLink(string url, string platform)
+    /// <summary>复制网盘链接最多试几次（第 1 次是立刻试，所以这个数是总次数而不是"重试次数"）。</summary>
+    private const int ClipboardCopyAttempts = 3;
+
+    /// <summary>每次重试之间的等待。够长到让占着剪贴板的进程松手，又短到用户察觉不到。</summary>
+    private static readonly TimeSpan ClipboardRetryDelay = TimeSpan.FromMilliseconds(150);
+
+    /// <summary>
+    /// 复制网盘链接到剪贴板（不再直接跳转浏览器）。失败会**自动重试**几次，全试完才弹错误 toast。
+    ///
+    /// <para>
+    /// 为什么要重试：实机反馈「每次启动 JASM 后第一次点网盘卡片必弹复制失败」，之后同样的操作却正常。
+    /// 这类失败是**瞬时的** —— <c>Clipboard.SetContent</c> 打开剪贴板时若被别的进程占着（刚起来的
+    /// 输入法、剪贴板管理器、网盘客户端自己都会抢），它会直接抛 CLIPBRD_E_CANT_OPEN；隔一两百毫秒
+    /// 再试就成功了。一次失败就报错，对用户等于「这功能每天第一次用必坏」，而它其实只是抢了一下。
+    /// </para>
+    ///
+    /// <para>
+    /// 退避只做固定间隔、不做指数增长：总共也就 300ms 的事，用户还在等结果，拖长了反而像卡住。
+    /// </para>
+    /// </summary>
+    private async Task<bool> CopyNetdiskLinkAsync(string url, string platform)
     {
-        try
+        for (var attempt = 1; attempt <= ClipboardCopyAttempts; attempt++)
         {
-            var data = new Windows.ApplicationModel.DataTransfer.DataPackage();
-            data.SetText(url);
-            Windows.ApplicationModel.DataTransfer.Clipboard.SetContent(data);
-            Windows.ApplicationModel.DataTransfer.Clipboard.Flush();
-        }
-        catch (Exception ex)
-        {
-            _logger.Warning(ex, "Failed to copy netdisk link to clipboard");
-            App.GetService<NotificationManager>()?.ShowNotification("复制失败", "无法复制网盘链接，请手动复制。",
-                TimeSpan.FromSeconds(4));
-            return false;
+            if (attempt > 1)
+                await Task.Delay(ClipboardRetryDelay);
+
+            try
+            {
+                var data = new Windows.ApplicationModel.DataTransfer.DataPackage();
+                data.SetText(url);
+                Windows.ApplicationModel.DataTransfer.Clipboard.SetContent(data);
+                Windows.ApplicationModel.DataTransfer.Clipboard.Flush();
+
+                if (attempt == 1)
+                    _logger.Information("Copied {Platform} netdisk link to clipboard", platform);
+                else
+                    _logger.Information("复制网盘链接第 {Attempt} 次才成功({Platform})", attempt, platform);
+
+                return true;
+            }
+            catch (Exception ex) when (attempt < ClipboardCopyAttempts)
+            {
+                // 还没试完 —— 只记 Debug，别在用户日志里刷 Warning（这一条并不罕见）。
+                _logger.Debug(ex, "复制网盘链接第 {Attempt} 次失败,重试({Platform})", attempt, platform);
+            }
+            catch (Exception ex)
+            {
+                // 最后一次也失败：这才值得报出来，且必须让用户看见（他以为复制成功了会很困惑）。
+                _logger.Warning(ex, "复制网盘链接连续 {Count} 次失败({Platform})", ClipboardCopyAttempts, platform);
+                App.GetService<NotificationManager>()?.ShowNotification("复制失败", "无法复制网盘链接，请手动复制。",
+                    TimeSpan.FromSeconds(4));
+                return false;
+            }
         }
 
-        _logger.Information("Copied {Platform} netdisk link to clipboard", platform);
-        return true;
+        return false; // 循环必然在上面返回；这里只为让编译器闭嘴。
     }
 
     /// <summary>根据网盘平台名返回对应的说明文本与提示截图文件名（不匹配则为通用兜底、无截图）。</summary>
