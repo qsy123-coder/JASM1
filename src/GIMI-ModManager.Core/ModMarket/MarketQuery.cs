@@ -37,7 +37,10 @@ public sealed record MarketQuery
     /// <summary>角色名。"all"/空白 = 不过滤；"Skins" = 排除 UI 与 Other/Misc；其余按 Ordinal 精确匹配。</summary>
     public string? Character { get; init; }
 
-    /// <summary>搜索词。按 LIKE 模式匹配（见 <see cref="MarketLikePattern"/>），不是字面量子串。</summary>
+    /// <summary>
+    /// 搜索词。只有 <c>*</c> 是通配符，其余字符（含 <c>%</c> <c>_</c> <c>\</c>）一律字面量 ——
+    /// 完整语义与在线侧的对应转义见 <see cref="MarketLikePattern"/>。
+    /// </summary>
     public string? Search { get; init; }
 
     public bool? Nsfw { get; init; }
