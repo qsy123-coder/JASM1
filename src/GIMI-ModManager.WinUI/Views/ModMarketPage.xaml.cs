@@ -577,6 +577,27 @@ public sealed partial class ModMarketPage : Page
             ViewModel.SelectedCategory = cat;
     }
 
+    /// <summary>
+    /// 回车 = 点「搜索」。搜索**只在显式动作时发生** —— 输入过程一个请求都不发
+    /// （原因见 <c>ModMarketViewModel.Search</c>）。
+    /// </summary>
+    private void SearchBox_KeyDown(object sender, KeyRoutedEventArgs e)
+    {
+        // 全限定而不是 using Windows.System:那个命名空间里也有个 DispatcherQueueTimer,
+        // 引进来会和 Microsoft.UI.Dispatching 的同名类型撞车(CS0104)。
+        if (e.Key != Windows.System.VirtualKey.Enter) return;
+
+        ViewModel.SearchCommand.Execute(null);
+        // 标成已处理：单行文本框自己不吃回车，但显式声明能挡住它继续冒泡到将来某个父容器的默认行为。
+        e.Handled = true;
+    }
+
+    /// <summary>Ctrl+F 聚焦搜索框，与角色详情等页面的同名快捷键一致。</summary>
+    private void SearchAccelerator_OnInvoked(KeyboardAccelerator sender, KeyboardAcceleratorInvokedEventArgs args)
+    {
+        SearchBox.Focus(FocusState.Keyboard);
+    }
+
     /// <summary>点击 NSFW 模糊遮罩后移除遮罩，显示原图</summary>
     private void NsfwOverlay_Tapped(object sender, TappedRoutedEventArgs e)
     {
